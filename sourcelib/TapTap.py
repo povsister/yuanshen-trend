@@ -18,7 +18,7 @@ class SourceTapTap(BaseSource):
     pageLimit = 10
 
     # debug FLAG
-    debug = True
+    debug = False
 
     def __init__(self, parsed_url, action):
         super().__init__(parsed_url, action)
@@ -505,7 +505,7 @@ class SourceTapTap(BaseSource):
         stmt = []
         ###########
         # label (id|id,id) 用于帖子分区
-        label = self.__getLabel()
+        label = self.labelIDs
         if label is not None:
             li = ['label_id = ' + str(v) for v in self.labelIDs]
             stmt.append('( {} )'.format(' OR '.join(li)))
