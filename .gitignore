@@ -1,0 +1,5 @@
+/venv
+*.png
+/fonts
+/data
+/.idea
