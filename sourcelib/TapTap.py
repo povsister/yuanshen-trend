@@ -412,7 +412,8 @@ class SourceTapTap(BaseSource):
         # 先获取帖子最末的回复
         self.debug_output('[update] scan from bottom of topic...')
         endReplyList = self.__getReplyByTopic(topic, order='desc', time_created=time_replied)
-        self.debug_output('[update] bottom get new {}'.format(endReplyList))
+        if len(endReplyList) > 0:
+            self.debug_output('[update] bottom get new {}'.format(endReplyList))
         if len(endReplyList) >= num_want:
             return endReplyList
 
@@ -451,7 +452,6 @@ class SourceTapTap(BaseSource):
             # 检查楼中楼是否有新回复
             if i['comments'] > 0:
                 popList = self.__getReplyByPost(i['post_id'], topic, order='desc', check_exist=True)
-                print(popList)
                 # 有新回复，则该层也要更新
                 if len(popList) > 0:
                     self.debug_output('[update] first 50 pop get new {}'.format(popList))
