@@ -217,7 +217,7 @@ class SourceTapTap(BaseSource):
         return ret
 
     def __getReplyByPost(self, pid, topic, start=0, rets=None, order='asc', sort='position',
-                         retrieve='all', time_created=0):
+                         retrieve='all', time_created=0, check_exist=False):
         # retrieve 也可定义为获取次数(int) 获取数量为 次数 x self.pageLimit
         if isinstance(retrieve, int):
             retrieve -= 1
@@ -243,6 +243,11 @@ class SourceTapTap(BaseSource):
                     continue
                 elif order == 'desc':
                     break
+            elif check_exist and self.__checkIfReplyExist(topic['topic_id'], i['id']):
+                if order == 'asc':
+                    continue
+                elif order == 'desc':
+                    break
             item = {
                 'topic_id': topic['topic_id'],
                 'post_id': i['id'],
@@ -264,7 +269,7 @@ class SourceTapTap(BaseSource):
             return rets
         elif js['data']['next_page'] != '' and bool(retrieve):
             offset = start + self.pageLimit
-            return self.__getReplyByPost(pid, topic, offset, rets, order, sort, retrieve, time_created)
+            return self.__getReplyByPost(pid, topic, offset, rets, order, sort, retrieve, time_created, check_exist)
         return rets
 
     def __getReplyByTopic(self, topic, start=0, rets=None, order='asc', sort='position',
@@ -393,50 +398,70 @@ class SourceTapTap(BaseSource):
         res = self.DBExecute(sql).fetchone()
         return res[0]
 
+    def __checkIfReplyExist(self, tid, pid):
+        sql = 'SELECT COUNT(*) FROM posts WHERE topic_id = {} AND post_id = {}'.format(tid, pid)
+        res = self.DBExecute(sql).fetchone()
+        if res[0] == 0:
+            # self.debug_output('topic {} reply {} is new'.format(tid, pid))
+            return False
+        # self.debug_output('topic {} reply {} already exist'.format(tid, pid))
+        return True
+
     def __getNewestReplyByTopic(self, topic, time_replied, num_want):
         outList = []
         # 先获取帖子最末的回复
+        self.debug_output('[update] scan from bottom of topic...')
         endReplyList = self.__getReplyByTopic(topic, order='desc', time_created=time_replied)
+        self.debug_output('[update] bottom get new {}'.format(endReplyList))
         if len(endReplyList) >= num_want:
             return endReplyList
-        else:
-            outList.extend(endReplyList)
-            # 尝试对最末的回复获取楼中楼
-            for i in endReplyList:
-                if i['comments'] > 0:
-                    popList = self.__getReplyByPost(i['post_id'], topic)
-                    # 新回复的楼中楼必然是新的
-                    outList.extend(popList)
-            if len(outList) >= num_want:
-                return outList
-            else:
-                # 获取点赞最多的30层 (通常很多人会选择回复此类内容)
-                upList = self.__getReplyByTopic(topic, order='desc', sort='ups', retrieve=3)
-                for i in upList:
-                    # 检查楼中楼是否有新回复
-                    if i['comments'] > 0:
-                        popList = self.__getReplyByPost(i['post_id'], topic, order='desc', time_created=time_replied)
-                        # 有新回复，则该层也要更新
-                        if len(popList) > 0:
-                            num_want += 1
-                            outList.append(i)
-                        outList.extend(popList)
+
+        outList.extend(endReplyList)
+        # 尝试对最末的回复获取楼中楼
+        for i in endReplyList:
+            if i['comments'] > 0:
+                self.debug_output('[update] scan new post in posts from bottom of topic...')
+                popList = self.__getReplyByPost(i['post_id'], topic, order='desc', check_exist=True)
+                outList.extend(popList)
+                if len(popList) > 0:
+                    self.debug_output('[update] bottom pop get new {}'.format(popList))
                 if len(outList) >= num_want:
                     return outList
-                else:
-                    # 获取最先回复的30层 (很多人也喜欢挤前排)
-                    firstList = self.__getReplyByTopic(topic, order='asc', retrieve=3)
-                    for i in firstList:
-                        # 检查楼中楼是否有新回复
-                        if i['comments'] > 0:
-                            popList = self.__getReplyByPost(i['post_id'], topic, order='desc', time_created=time_replied)
-                            # 有新回复，则该层也要更新
-                            if len(popList) > 0:
-                                num_want += 1
-                                outList.append(i)
-                            outList.extend(popList)
-                    # 无论如何 返回数据
+
+        # 获取点赞最多的100层 (通常很多人会选择回复此类内容)
+        self.debug_output('[update] scan top 100 posts of topic...')
+        upList = self.__getReplyByTopic(topic, order='desc', sort='ups', retrieve=10)
+        for i in upList:
+            # 检查楼中楼是否有新回复
+            if i['comments'] > 0:
+                popList = self.__getReplyByPost(i['post_id'], topic, order='desc', check_exist=True)
+                # 有新回复，则该层也要更新
+                if len(popList) > 0:
+                    self.debug_output('[update] top 100 pop get new {}'.format(popList))
+                    num_want += 1
+                    outList.append(i)
+                outList.extend(popList)
+                if len(outList) >= num_want:
                     return outList
+
+        # 获取最先回复的50层 (很多人也喜欢挤前排)
+        self.debug_output('[update] scan first 50 posts of topic...')
+        firstList = self.__getReplyByTopic(topic, order='asc', retrieve=5)
+        for i in firstList:
+            # 检查楼中楼是否有新回复
+            if i['comments'] > 0:
+                popList = self.__getReplyByPost(i['post_id'], topic, order='desc', check_exist=True)
+                print(popList)
+                # 有新回复，则该层也要更新
+                if len(popList) > 0:
+                    self.debug_output('[update] first 50 pop get new {}'.format(popList))
+                    num_want += 1
+                    outList.append(i)
+                outList.extend(popList)
+                if len(outList) >= num_want:
+                    return outList
+        # 无论如何 返回数据
+        return outList
 
     def __getTopicReplyRecursive(self, topic, rets=None):
         if rets is None:
@@ -469,9 +494,9 @@ class SourceTapTap(BaseSource):
                 # 先获取数据库记录的评论条数
                 comment_count = self.__getTopicCommentCount(i['id'])
                 # 记录的评论数为 -1 代表数据库没有该记录 直接全量更新
-                # 或者 该帖子的当前评论数量少于 100 条 直接全量更新即可
-                if comment_count == -1 or i['comments'] <= 100:
-                    self.debug_output('[update] no record or no more 100 using full update for topic {}'.format(i['id']))
+                # 或者 该帖子的当前评论数量少于 200 条 直接全量更新即可
+                if comment_count == -1 or i['comments'] <= 200:
+                    self.debug_output('[update] no record or no more 200 using full update for topic {}'.format(i['id']))
                     infList.extend(self.__getTopicReplyRecursive(tDetail))
                 else:
                     # 计算需要更新的条目数量
@@ -619,7 +644,7 @@ class SourceTapTap(BaseSource):
             if day is None:
                 day = 7
             dt = self.__getDefaultTimestamp(int(day))
-        tIDs = self.__getTopicIDsByCreatedTime(int(dt))
+        tIDs = self.__getTopicIDsByCreatedTime(dt)
         self.__collectData(tIDs, try_selective_update=True)
         self.content['created_since'] = dt
 

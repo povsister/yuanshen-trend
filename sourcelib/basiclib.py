@@ -33,7 +33,7 @@ def day_sub(dtm, day):
     dtm = dtm.timestamp()
     secs = day * 24 * 3600
     dt = dtm - secs
-    return dt
+    return int(dt)
 
 
 def get_today_datetime():
