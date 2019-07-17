@@ -217,10 +217,10 @@ class SourceTapTap(BaseSource):
         return ret
 
     def __getReplyByPost(self, pid, topic, start=0, rets=None, order='asc', sort='position',
-                         retrieve_all: int or bool = True, time_created=0):
-        # retrieve_all 也可定义为获取次数(int) 获取数量为 次数 x self.pageLimit
-        if isinstance(retrieve_all, int):
-            retrieve_all -= 1
+                         retrieve='all', time_created=0):
+        # retrieve 也可定义为获取次数(int) 获取数量为 次数 x self.pageLimit
+        if isinstance(retrieve, int):
+            retrieve -= 1
         api = 'https://api.taptapdada.com/post/v1/by-post'
         param = {
             'sort': sort,
@@ -238,7 +238,7 @@ class SourceTapTap(BaseSource):
         before = len(rets)
         for i in plist:
             # 如果回复时间早于给定时间 不予记录
-            if time_created != 0 and i['created_time'] < time_created:
+            if time_created != 0 and i['created_time'] <= time_created:
                 if order == 'asc':
                     continue
                 elif order == 'desc':
@@ -262,16 +262,16 @@ class SourceTapTap(BaseSource):
             rets.append(item)
         if len(rets) == before:
             return rets
-        elif js['data']['next_page'] != '' and bool(retrieve_all):
+        elif js['data']['next_page'] != '' and bool(retrieve):
             offset = start + self.pageLimit
-            return self.__getReplyByPost(pid, topic, offset, rets, order, sort, retrieve_all, time_created)
+            return self.__getReplyByPost(pid, topic, offset, rets, order, sort, retrieve, time_created)
         return rets
 
     def __getReplyByTopic(self, topic, start=0, rets=None, order='asc', sort='position',
-                          retrieve_all: int or bool = True, time_created=0):
-        # retrieve_all 也可定义为获取次数(int) 获取数量为 次数 x self.pageLimit
-        if isinstance(retrieve_all, int):
-            retrieve_all -= 1
+                          retrieve='all', time_created=0):
+        # retrieve 也可定义为获取次数(int) 获取数量为 次数 x self.pageLimit
+        if isinstance(retrieve, int):
+            retrieve -= 1
         api = 'https://api.taptapdada.com/post/v3/by-topic'
         param = {
             'sort': sort,
@@ -287,7 +287,7 @@ class SourceTapTap(BaseSource):
         before = len(rets)
         for i in plist:
             # 如果回复时间早于给定时间 不予记录
-            if time_created != 0 and i['created_time'] < time_created:
+            if time_created != 0 and i['created_time'] <= time_created:
                 if order == 'asc':
                     continue
                 elif order == 'desc':
@@ -311,9 +311,9 @@ class SourceTapTap(BaseSource):
             rets.append(item)
         if len(rets) == before:
             return rets
-        elif js['data']['next_page'] != '' and bool(retrieve_all):
+        elif js['data']['next_page'] != '' and bool(retrieve):
             offset = start + self.pageLimit
-            return self.__getReplyByTopic(topic, offset, rets, order, sort, retrieve_all, time_created)
+            return self.__getReplyByTopic(topic, offset, rets, order, sort, retrieve, time_created)
         return rets
 
     # by created_time For do_Data
@@ -328,7 +328,7 @@ class SourceTapTap(BaseSource):
             rets = []
         before = len(rets)
         for i in tList:
-            if i['created_time'] >= time_created:
+            if i['created_time'] > time_created:
                 rets.append(i)
             # 如果不是置顶帖 则确认处理完毕
             elif i['type'] != 'top':
@@ -351,6 +351,11 @@ class SourceTapTap(BaseSource):
         for i in tList:
             if i['commented_time'] > time_commented:
                 rets.append(i)
+            elif i['type'] == 'top':
+                # 对于置顶帖 额外使用评论总数侦测楼中楼评论 (因为楼中楼评论不会更新主题的回复时间)
+                cCount = self.__getTopicCommentCount(i['id'])
+                if i['comments'] > cCount:
+                    rets.append(i)
             # 如果不是置顶帖 则确认处理完毕
             elif i['type'] != 'top':
                 return rets
@@ -358,13 +363,13 @@ class SourceTapTap(BaseSource):
             return rets
         return self.__getTopicIDsByCommentedTime(time_commented, start+self.pageLimit, rets, False)
 
-    def __checkIfTopicNeedUpdate(self, tid, time_commented):
-        sql = 'SELECT commented_time FROM posts WHERE topic_id = {}'.format(tid)
+    def __checkIfTopicNeedUpdate(self, tid, time_commented, comments):
+        sql = 'SELECT commented_time, comments FROM posts WHERE topic_id = {}'.format(tid)
         res = self.DBExecute(sql).fetchone()
         if res is None:
             return True
         # res 不为 NoneType
-        elif res[0] < time_commented:
+        elif res[0] < time_commented or res[1] < comments:
             return True
         return False
 
@@ -381,7 +386,7 @@ class SourceTapTap(BaseSource):
         res = self.DBExecute(sql).fetchone()
         if res is not None:
             return res[0]
-        return None
+        return -1
 
     def __getTopicCommentedTime(self, tid):
         sql = 'SELECT commented_time FROM posts WHERE topic_id = {}'.format(tid)
@@ -406,21 +411,29 @@ class SourceTapTap(BaseSource):
                 return outList
             else:
                 # 获取点赞最多的30层 (通常很多人会选择回复此类内容)
-                upList = self.__getReplyByTopic(topic, order='desc', sort='ups', retrieve_all=3)
+                upList = self.__getReplyByTopic(topic, order='desc', sort='ups', retrieve=3)
                 for i in upList:
                     # 检查楼中楼是否有新回复
                     if i['comments'] > 0:
                         popList = self.__getReplyByPost(i['post_id'], topic, order='desc', time_created=time_replied)
+                        # 有新回复，则该层也要更新
+                        if len(popList) > 0:
+                            num_want += 1
+                            outList.append(i)
                         outList.extend(popList)
                 if len(outList) >= num_want:
                     return outList
                 else:
-                    # 获取最先回复的20层 (很多人也喜欢占前排)
-                    firstList = self.__getReplyByTopic(topic, order='asc', retrieve_all=2)
+                    # 获取最先回复的30层 (很多人也喜欢挤前排)
+                    firstList = self.__getReplyByTopic(topic, order='asc', retrieve=3)
                     for i in firstList:
                         # 检查楼中楼是否有新回复
                         if i['comments'] > 0:
                             popList = self.__getReplyByPost(i['post_id'], topic, order='desc', time_created=time_replied)
+                            # 有新回复，则该层也要更新
+                            if len(popList) > 0:
+                                num_want += 1
+                                outList.append(i)
                             outList.extend(popList)
                     # 无论如何 返回数据
                     return outList
@@ -443,22 +456,22 @@ class SourceTapTap(BaseSource):
         self.__collectLabelData()
         for i in tids:
             # 不需要更新则跳过
-            if not self.__checkIfTopicNeedUpdate(i['id'], i['commented_time']) and not force_update:
+            if not self.__checkIfTopicNeedUpdate(i['id'], i['commented_time'], i['comments']) and not force_update:
                 self.debug_output('[Topic update] skip {}'.format(i['id']))
                 continue
             infList = []
             # 根据帖子ID 获取帖子内容 (主贴内容必须先更新)
             tDetail = self.__getTopicDetail(i['id'])
             infList.append(tDetail)
-            # 对于新回复 是否采取猜测更新的模式
             self.debug_output('[update] retrieving reply of topic {}'.format(i['id']))
+            # 对于新回复 是否采取增量更新的模式
             if try_selective_update:
                 # 先获取数据库记录的评论条数
                 comment_count = self.__getTopicCommentCount(i['id'])
-                # 记录的评论数为None代表数据库没有该记录 直接全量更新
+                # 记录的评论数为 -1 代表数据库没有该记录 直接全量更新
                 # 或者 该帖子的当前评论数量少于 100 条 直接全量更新即可
-                if comment_count is None or i['comments'] <= 100:
-                    self.debug_output('[update] using full update for topic {}'.format(i['id']))
+                if comment_count == -1 or i['comments'] <= 100:
+                    self.debug_output('[update] no record or no more 100 using full update for topic {}'.format(i['id']))
                     infList.extend(self.__getTopicReplyRecursive(tDetail))
                 else:
                     # 计算需要更新的条目数量
@@ -481,7 +494,7 @@ class SourceTapTap(BaseSource):
                         infList.extend(self.__getTopicReplyRecursive(tDetail))
             else:
                 # 全量更新回复
-                self.debug_output('[update] using full update for topic {}'.format(i['id']))
+                self.debug_output('[data] using full update for topic {}'.format(i['id']))
                 infList.extend(self.__getTopicReplyRecursive(tDetail))
             # 每次扫描完一个帖子，记录一次
             # print(infList)
@@ -599,12 +612,15 @@ class SourceTapTap(BaseSource):
             jieba.del_word(i)
 
     def do_Data(self):
-        dt = int(self.queryDict.get('created_since'))
+        dt = self.queryDict.get('created_since')
         if dt is None:
             # default 7 day ago
-            dt = self.__getDefaultTimestamp(7)
-        tIDs = self.__getTopicIDsByCreatedTime(dt)
-        self.__collectData(tIDs)
+            day = self.queryDict.get('day')
+            if day is None:
+                day = 7
+            dt = self.__getDefaultTimestamp(int(day))
+        tIDs = self.__getTopicIDsByCreatedTime(int(dt))
+        self.__collectData(tIDs, try_selective_update=True)
         self.content['created_since'] = dt
 
     def do_Countword(self):
@@ -682,10 +698,12 @@ class SourceTapTap(BaseSource):
         self.content['data'] = allJSON
 
     def do_Update(self):
-        lastTimestamp = self.__getLastCommentTimestamp()
-        tIDs = self.__getTopicIDsByCommentedTime(lastTimestamp)
+        dt = self.queryDict.get('commented_since')
+        if dt is None:
+            dt = self.__getLastCommentTimestamp()
+        tIDs = self.__getTopicIDsByCommentedTime(int(dt))
         self.__collectData(tIDs, True, True)
-        self.content['commented_since'] = lastTimestamp
+        self.content['commented_since'] = dt
 
     def do_Labels(self):
         sql = 'SELECT label_id, label_name FROM labels'
