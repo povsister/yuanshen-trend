@@ -202,7 +202,7 @@ class SourceTapTap(BaseSource):
             'topic_id': tid,
             'post_id': 0,
             'author_id': js['data']['topic']['author']['id'],
-            'title': js['data']['topic']['title'],
+            'title': js['data']['topic']['title'].lower(),
             'content': html2Text(js['data']['first_post']['contents']['text']),
             'label_id': int(js['data']['topic']['group_label']['params']['group_label_id']),
             'elite': int(js['data']['topic']['is_elite']),
@@ -659,6 +659,15 @@ class SourceTapTap(BaseSource):
         ct = Counter(allWords)
         fin = {k: ct[k] for (k, v) in keywords}
         self.content['data'] = fin
+
+    def do_Lower(self):
+        sql = 'SELECT topic_id,post_id, title, content FROM posts'
+        res = self.DBExecute(sql).fetchall()
+        uSql = 'UPDATE posts SET title = ?, content = ? WHERE topic_id = ? AND post_id = ?'
+        for i in res:
+            title = i[2].lower()
+            content = i[3].lower()
+            self.DBExecute(uSql, (title, content, i[0], i[1]))
 
     # def do_Wordcloud(self):
     #     allLine = self.__getAsText()

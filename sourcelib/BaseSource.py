@@ -50,8 +50,10 @@ class BaseSource(ABC):
             os.makedirs('/'.join(t))
             return self.__getDBConn()
 
-    def DBExecute(self, sql):
-        return self.DBConn.execute(sql)
+    def DBExecute(self, sql, data=None):
+        if data is None:
+            return self.DBConn.execute(sql)
+        return self.DBConn.execute(sql, data)
 
     def DBExecuteMany(self, sql, data):
         return self.DBConn.executemany(sql, data)

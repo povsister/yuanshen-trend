@@ -14,7 +14,7 @@ def html2Text(html):
     soup = BeautifulSoup(html, 'lxml')
     text = soup.get_text()
     regex = compile(u'(\xa0|\xa01|\xa02|\xa03|\xa04|\ufeff|\n)')
-    text = sub(regex, u' ', text).strip()
+    text = sub(regex, u' ', text).strip().lower()
     return text
 
 
