@@ -88,7 +88,7 @@ Python 3.7.x based micro-service designed for tracking Genshin Impact on TapTap.
 
 
 ## TODO
-  - 多线程获取数据 / Muti-threads for data fetching
+  - 多线程获取数据 / Multi-threads for data fetching
 
 
 ## Licence
