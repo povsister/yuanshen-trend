@@ -26,6 +26,10 @@ Python 3.7.x based micro-service designed for tracking Genshin Impact on TapTap.
 
 ## 例子 / Examples
 
+  ### [效果预览](https://povsister.app/#/ys/tap-trend)
+  > [Demo site using THIS project as data source](https://povsister.app/#/ys/tap-trend)
+ 
+
 **1. 假设你需要追踪原神的TapTap舆论情况 / Assuming you want to track Genshin Impact on taptap**
   - 先确认原神在TapTap的URL / First, locate the URL of Genshin on taptap
     ```
