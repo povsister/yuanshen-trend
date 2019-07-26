@@ -57,7 +57,7 @@ Python 3.7.x based micro-service designed for tracking Genshin Impact on TapTap.
 
 **5. 获得近期热词 / Extract recent top-words**
   ```
-  http://127.0.0.1:1571/?url=https://www.taptap.com/app/168332&action=countword&word=100&updated_since=timestamp_since&updated_till=timestamp_till
+  GET http://127.0.0.1:1571/?url=https://www.taptap.com/app/168332&action=countword&word=100&updated_since=timestamp_since&updated_till=timestamp_till
   ```
   > 需要注意的是程序并不会校验请求参数 / Be cautious that you may encounter an Exception causing program will NOT validate the request param
   
