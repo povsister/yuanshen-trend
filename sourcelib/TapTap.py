@@ -73,16 +73,18 @@ class SourceTapTap(BaseSource):
             if i.get('index') is None and i['label'] != '精华' and i['label'] != '官方':
                 labels.append((0, i['label']))
             else:
-                if i.get('index') is not None:
+                if i.get('index') is not None and i.get('index') != 'all':
                     labels.append((i['index'], i['label']))
+                else:
+                    labels.append((0, i['label']))
 
         return labels
 
     def __collectLabelData(self):
         labels = self.__getLabelTuples()
+        self.debug_output('[labels] ' + str(labels))
         # 写入数据库
         self.DBExecuteMany('REPLACE INTO labels VALUES (?, ?)', labels)
-        self.debug_output('[labels] ' + str(labels))
 
     def __getAppID(self):
         path = self.parsedURL.path
