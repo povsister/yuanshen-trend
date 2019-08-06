@@ -70,13 +70,10 @@ class SourceTapTap(BaseSource):
         terms = js['data']['group']['terms']
         labels = []
         for i in terms:
-            if i.get('index') is None and i['label'] != '精华' and i['label'] != '官方':
+            if i['management_params'].get('type') is not None and i['management_params'].get('type') == 'all':
                 labels.append((0, i['label']))
-            else:
-                if i.get('index') is not None and i.get('index') != 'all':
-                    labels.append((i['index'], i['label']))
-                else:
-                    labels.append((0, i['label']))
+            elif i['management_params'].get('group_label_id') is not None:
+                labels.append((i['index'], i['label']))
 
         return labels
 
